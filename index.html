@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Socket.IO chat</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font: 13px Helvetica, Arial; }
+      form { background: #000; padding: 3px; position: fixed; bottom: 0; width: 50%; }
+      form input { border: 0; padding: 10px; width: 90%; margin-right: .5%; }
+      form button { width: 9%; background-color: white; border: none; padding: 10px; }
+      #messages { list-style-type: none; margin: 0; padding: 0; height: 100%;overflow-y: scroll; }
+      #messages li { padding: 5px 10px; }
+      html{height: 100%;}body{height: 100%;}
+      .page{width: 100%;height: 100%;background-color: black;position: relative;top: 0;left: 0;}
+      .page h1{font-size: 30px;color: white;text-align: center;padding-top: 280px;font-weight: 400;}
+      .page .nickname{display: block;width: 400px;height: 50px;font-size: 40px;margin: 0 auto;margin-top: 30px;background-color: transparent;color: white;border: none;border-bottom: 1px solid white;text-align: center;}
+      .page .nickname:focus{outline: none;}
+      .page .nicksend{display: block;width: 150px;height: 40px;outline: none;background-color: black;color: white;font-size: 24px;border: 1px solid white;margin: 0 auto;margin-top: 30px;}
+      #main{width: 50%;height: 100%;display: none;position: relative;top: 0;left: 0;}
+      #messages li{font-size: 20px;background-color: white;word-wrap: break-word;word-break: break-all;}
+      #messages li span:nth-child(odd){display: inline;color: #58dc00;line-height: 30px;margin-right: 10px;}
+      #messages li span:nth-child(even){display: inline;color: black;line-height: 30px;}
+      .draw{width: 50%;position: absolute;top: 0;right: 0;display: none;}
+      .draw h2{text-align: center;}
+      .draw .canvas_center{width: 600px;margin: 0 auto;}
+      .draw .canvas_center #canvas{border: 1px dashed grey;margin: 0 auto;}
+      .info{text-align: center;}
+    </style>
+  </head>
+  <body>
+    <div class="page" id="name">
+      <h1>请输入你的昵称</h1>
+      <input class="nickname" autofocus type="text" name="" value="">
+      <button class="nicksend" type="button" name="button">提交</button>
+    </div>
+    <div id="main">
+      <ul id="messages"></ul>
+      <form action="">
+        <input id="m" autocomplete="off" /><button>Send</button>
+      </form>
+    </div>
+    <div class="draw">
+      <h2>画板在此</h2>
+      <div class="canvas_center">
+        <canvas id="canvas" width="600" height="600"></canvas>
+      </div>
+      <div class="info">
+        <h1 id='character'>平民</h1>
+        <h2 id='count'>当前人数:0</h2>
+        <div class="answer">
+          <p></p>
+          <p></p>
+        </div>
+      </div>
+    </div>
+
+    <script type="text/javascript" src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.bootcss.com/jquery/1.11.0/jquery.js"></script>
+    <script type="text/javascript">
+    (function(){
+      var socket = io();
+      //聊天数据
+      var data = {name : 'someone', msg : 'text'};
+      //绘画数据
+      var canvas = document.getElementById('canvas');
+      var ctx = canvas.getContext("2d");
+      var new_dot = {x : 0, y : 0};
+      var last_dot = {x : 0, y : 0};
+      var canvas_pos = {x : 0, y : 0};
+      //canvas初始化
+      ctx.strokeStyle='black';
+      ctx.lineWidth="5";
+      canvas_pos.x = 0.75*window.innerWidth-300;
+      canvas_pos.y = 20;
+      //绘画权限操作
+      var flag = false;
+      var flag2 = false;
+      //如果页面宽度变化，重置canvas位置
+      $(window).resize(function(){
+        canvas_pos.x = window.innerWidth/2;
+      });
+      //登陆函数
+      var login = {
+        nickname : function(){
+          var $nickname = $('.nickname');
+          NAME = $nickname.val()? $nickname.val(): null;
+          console.log(NAME);
+          $('#name').css('display', 'none');
+          $('#main').css({'display':'block','background-color':'white'});
+          $('.draw').css('display', 'block');
+        }
+      };
+
+      //聊天模块
+      var chat = {
+        sub : function(){
+          data.msg = $("#m").val();
+          data.name = NAME;
+          socket.emit('chat message', data);
+          $('#m').val('');
+          return false;
+        },
+
+        emit : function(data){
+          var $li = $('<li></li>'),
+              $name = $('<span></span>'),
+              $msg = $('<span></span>');
+          $name.text(data.name);
+          $msg.text(data.msg);
+          $li.append($name).append($msg);
+          $('#messages').append($li);
+          var div = document.getElementById('messages');
+          div.scrollTop = div.scrollHeight;
+        }
+      };
+
+      //绘画模块
+      var draw = {
+        paint : function(arg1,arg2,arg3,arg4){
+          if ( arg3&&arg4 ){
+             ctx.beginPath();
+             ctx.moveTo(arg1.x,arg1.y);
+             ctx.lineTo(arg2.x,arg2.y);
+             ctx.closePath();
+             ctx.stroke();
+          }
+          last_dot.x = new_dot.x;
+          last_dot.y = new_dot.y;
+        }
+      };
+      var room = {
+        power : function(data) {
+          $('#count').text('当前人数：'+data);
+        }
+      };
+      //绘画监听
+      $('canvas').mousedown(function(e) {
+        flag = true;
+        last_dot.x = e.pageX - canvas_pos.x;
+        last_dot.y = e.pageY - canvas_pos.y;
+      });
+      $('canvas').mousemove(function(e){
+        new_dot.x = e.pageX - canvas_pos.x;
+        new_dot.y = e.pageY - canvas_pos.y;
+        socket.emit('draw message',last_dot,new_dot,flag);
+      });
+      $('body').mouseup(function(){
+        flag = false;
+      });
+
+      //设置昵称
+      $('.nicksend').click(function(){
+        login.nickname();
+      });
+      //聊天动作
+      $('form').submit(chat.sub);
+      socket.on('chat message',function(msg){
+        data.name = msg.name;
+        data.msg = msg.msg;
+        if(msg.right){
+          alert('正确答案是'+data.msg+'由'+data.name+data.name+'回答出');
+        }
+        chat.emit(data);
+      });
+      //绘画动作
+      socket.on('draw message',function(arg1,arg2,arg3,arg4){
+        draw.paint(arg1,arg2,arg3,arg4);
+      });
+      //连接与断开时的逻辑
+      socket.on('keyijingxuan',function(data){
+        room.power(data);
+      });
+      socket.on('duankailianjie',function(data){
+        room.power(data);
+      });
+      //服务端全局广播，客户端得到后比对自己的socket.id
+      socket.on('fangzhu',function(data1,result){
+        if(socket.id==data1){
+          var result;
+          console.log(socket.id + 'wp')
+          $('#character').text('房主');
+          flag2 = true;
+          $('.answer p:first-child').text('请按照指令画出相应事物。');
+          console.log("jieguo" + result);
+          $('.answer p:last-child').html("本轮物品是：<i id='result'>"+result+"</i>");
+        }else{
+          flag2 = false;
+          $('.answer p:first-child').text('请在左侧回答出所画物品。');
+          $('.answer p:last-child').html("");
+        }
+      });
+    })();
+    </script>
+  </body>
+</html>
